@@ -1,3 +1,9 @@
+
+typedef struct _TaskMessage TaskMessage;
+typedef struct _Task Task;
+typedef struct _System System;
+typedef struct _Source Source;
+
 /* On most systems, a process can only terminate in these two ways:
  *   - called exit() or _exit()
  *   - killed by a signal (from the kernel, or via kill() or raise())
@@ -52,13 +58,24 @@ struct _Task
   int termination_info;	/* exit status or signal */
 };
 
+typedef void (*SourceCommandlineCallback)(Source *source,
+                                          const char *str,
+                                          void *trap_data);
+struct _Source
+{
+  void (*trap)(Source *source,
+               SourceCommandlineCallback callback,
+               void *trap_data);
+  void (*untrap)(Source *source);
+};
+
 struct _System
 {
   GPtrArray *tasks;
   unsigned next_unstarted_task;
 
-  GPtrArray *input_scripts;
-  unsigned cur_input_script;
+  GPtrArray *input_sources;
+  unsigned cur_input_sources;
 
   TaskMessage *first_message, *last_message;
   
@@ -69,8 +86,14 @@ struct _System
 };
 
 System *system_new                     (void);
+void    system_add_input_source        (System *system,
+                                        Source *source);
 void    system_add_input_script        (System *system,
                                         const char *filename);
+void    system_add_input_stdin         (System *system);
+void    system_add_input_fd            (System *system,
+                                        int     fd,
+                                        gboolean should_close);
 void    system_set_max_unstarted_tasks (System *system,
                                         unsigned n);
 void    system_set_max_running_tasks   (System *system,
