@@ -1,8 +1,14 @@
+#include <fcntl.h>
+#include <errno.h>
+#include <unistd.h>
 #include "parallelizer.h"
 
 static void do_input_source_trap (System *system);
 static void do_input_source_untrap (System *system);
 static void start_next_task (System *system);
+
+#define DEFAULT_MAX_UNSTARTED_TASKS     500
+#define DEFAULT_MAX_RUNNING_TASKS       32
 
 System *
 system_new (void)
@@ -11,7 +17,8 @@ system_new (void)
   system->tasks = g_ptr_array_new ();
   system->next_unstarted_task = 0;
   system->input_sources = g_ptr_array_new ();
-  system->cur_input_script = 0;
+  system->cur_input_source = 0;
+  system->is_input_source_trapped = FALSE;
   system->first_message = system->last_message = NULL;
   system->log_fd = -1;
   system->max_unstarted_tasks = DEFAULT_MAX_UNSTARTED_TASKS;
@@ -42,8 +49,9 @@ retry_pipe:
 static void
 start_next_task (System *system)
 {
-  unsigned task_index = system->n_unstarted_tasks + n_running_tasks;
+  unsigned task_index = system->n_unstarted_tasks + system->n_running_tasks;
   int stderr_pipe[2], stdout_pipe[2], stdin_pipe[2];
+  int pid;
   Task *task = system->tasks->pdata[task_index];
   g_assert (task->state == TASK_WAITING);
 
@@ -75,8 +83,8 @@ retry_fork:
   close (stdout_pipe[1]);
   close (stderr_pipe[1]);
   task->state = TASK_RUNNING;
-  task->n_unstarted_tasks--;
-  task->n_running_tasks++;
+  system->n_unstarted_tasks--;
+  system->n_running_tasks++;
   task->info.running.pid = pid;
   task->info.running.stdin_poll.fd = stdin_pipe[1];
   task->info.running.stdin_poll.events = G_IO_OUT;
@@ -85,8 +93,8 @@ retry_fork:
   task->info.running.stdout_poll.events = G_IO_IN;
   task->info.running.stderr_poll.fd = stderr_pipe[0];
   task->info.running.stderr_poll.events = G_IO_IN;
-  g_main_context_add_poll (g_main_context_default (), &task->stdout_poll, 0);
-  g_main_context_add_poll (g_main_context_default (), &task->stderr_poll, 0);
+  g_main_context_add_poll (g_main_context_default (), &task->info.running.stdout_poll, 0);
+  g_main_context_add_poll (g_main_context_default (), &task->info.running.stderr_poll, 0);
 }
 
 static void
@@ -94,6 +102,8 @@ handle_source (Source *source, const char *str, void *trap_data)
 {
   System *system = trap_data;
   Task *task = g_slice_new (Task);
+  task->system = system;
+  task->task_index = system->tasks->len;
   task->str = g_strdup (str);
   task->first_message = task->last_message = NULL;
   task->state = TASK_WAITING;
@@ -230,44 +240,47 @@ void    system_add_input_fd            (System *system,
 void    system_set_max_unstarted_tasks (System *system,
                                         unsigned n)
 {
-  ...
+  system->max_unstarted_tasks = n;
+  if (n < system->n_unstarted_tasks)
+    {
+      if (!system->is_input_source_trapped)
+        do_input_source_trap (system);
+    }
+  else
+    {
+      if (system->is_input_source_trapped)
+        do_input_source_untrap (system);
+    }
 }
 
 void    system_set_max_running_tasks   (System *system,
                                         unsigned n)
 {
-  ...
+  system->max_running_tasks = n;
+  while (system->n_running_tasks < system->max_running_tasks
+      && system->n_unstarted_tasks > 0)
+    start_next_task (system);
 }
 
-
-void    system_set_handlers            (System *system,
-                                        TaskDataHandler data_handler, 
-					TaskEndedNotify ended,
-					void            handler_data)
+struct _SystemTrap
 {
-  ...
-}
+  System *system;
+  SystemTrap *prev, *next;
+  SystemTrapFuncs *funcs;
+  void *trap_data;
+};
 
-
-void    system_set_max_unstarted_tasks (System *system,
-                                        unsigned n)
+SystemTrap *system_trap                (System *system,
+                                        SystemTrapFuncs *funcs,
+					void            *trap_data)
 {
-  ...
+  SystemTrap *rv = g_slice_new (SystemTrap);
+  rv->system = system;
+  rv->prev = NULL;
+  rv->next = system->trap_list;
+  if (rv->next)
+    rv->next->prev = rv;
+  rv->funcs = funcs;
+  rv->trap_data = trap_data;
+  return rv;
 }
-
-void    system_set_max_running_tasks   (System *system,
-                                        unsigned n)
-{
-  ...
-}
-
-
-void    system_set_handlers            (System *system,
-                                        TaskDataHandler data_handler, 
-					TaskEndedNotify ended,
-					void            handler_data)
-{
-  ...
-}
-
-
