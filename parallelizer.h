@@ -53,9 +53,19 @@ struct _Task
   char *str;		/* a command-line */
   TaskState state;
   TaskMessage *first_message, *last_message;
-  pid_t pid;		/* if running */
-  TaskTerminationType termination_type;
-  int termination_info;	/* exit status or signal */
+  union {
+    struct {
+      pid_t pid;
+      GPollFD stdin_poll;
+      GPollFD stdout_poll;
+      GPollFD stderr_poll;
+      gboolean has_stdin_poll;
+    } running;
+    struct {
+      TaskTerminationType termination_type;
+      int termination_info;
+    } terminated;
+  } info;
 };
 
 typedef void (*SourceCommandlineCallback)(Source *source,
@@ -63,16 +73,31 @@ typedef void (*SourceCommandlineCallback)(Source *source,
                                           void *trap_data);
 struct _Source
 {
-  void (*trap)(Source *source,
-               SourceCommandlineCallback callback,
-               void *trap_data);
+  /* implementation only needs to support one trap;
+     if callback==NULL, untrap.  */
+  void (*trap)(Source *source);
   void (*untrap)(Source *source);
+  void (*destroy)(Source *source);
+
+  SourceCommandlineCallback callback;
+  void *trap_data;
 };
+
+void source_trap   (Source *source,
+                    SourceCommandlineCallback callback,
+                    void *trap_data);
+void source_untrap (Source *source);
 
 struct _System
 {
+  /* invariants: next_unstarted_task <= tasks->len 
+          AND    n_unstarted_tasks+n_running_tasks+n_finished_tasks = tasks->len
+   */
   GPtrArray *tasks;
   unsigned next_unstarted_task;
+  unsigned n_unstarted_tasks;
+  unsigned n_running_tasks;
+  unsigned n_finished_tasks;
 
   GPtrArray *input_sources;
   unsigned cur_input_sources;
