@@ -179,6 +179,41 @@ struct _SourceFD
   GByteArray *buffer;
 };
 
+static gboolean
+do_idle_input_source (gpointer data)
+{
+  SourceFD *sfd = data;
+  while (memchr (sfd->buffer->data, '\n', sfd->buffer->len) == NULL
+    && sfd->fd.fd >= 0)
+    {
+      unsigned old_len = sfd->buffer->len;
+      g_byte_array_set_size (sfd->buffer, old_len + 4096);
+      read_rv = read (sfd->fd.fd, sfd->buffer->data + old_len,
+                      sfd->buffer->len - old_len);
+      if (read_rv < 0)
+        {
+          ...
+        }
+      else if (read_rv == 0)
+        {
+          /* eof */
+          if (sfd->buffer->len > 0)
+            {
+              /* complain about partial line */
+              ...
+            }
+          if (sfd->should_close)
+            close (sfd->fd.fd);
+          sfd->fd.fd = -1;
+        }
+    }
+  while (trapped)
+    {
+      ....do callbacks...
+    }
+  return TRUE;
+}
+
 static void 
 source_fd_trap (Source *source)
 {
