@@ -12,7 +12,6 @@ static GOptionEntry op_entries[] =
   {NULL,0,0,0,NULL,NULL,NULL}
 };
 
-
 int main(int argc, char **argv)
 {
 
