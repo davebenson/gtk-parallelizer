@@ -210,6 +210,7 @@ check_if_task_done (Task *task)
     {
       TaskTerminationType type = task->info.running.termination_type;
       int info = task->info.running.termination_info;
+      GTimeVal cur_time;
 
       if (task->info.running.stdin_source)
         g_source_destroy ((GSource *) task->info.running.stdin_source);
@@ -224,6 +225,12 @@ check_if_task_done (Task *task)
       task->info.terminated.termination_info = info;
       task->system->n_running_tasks--;
       task->system->n_finished_tasks++;
+
+      g_get_current_time (&cur_time);
+      SystemTrap *trap;
+      for (trap = task->system->trap_list; trap; trap = trap->next)
+        if (trap->funcs->ended)
+          trap->funcs->ended (task, &cur_time, type, info, trap->trap_data);
 
       DEBUG_ONLY (g_message ("n_unstarted,running,finished=%u,%u,%u",
                              task->system->n_unstarted_tasks,
@@ -240,6 +247,7 @@ handle_child_watch_terminated (GPid     pid,
                                gpointer data)
 {
   Task *task = data;
+  g_message ("handle_child_watch_terminated: pid=%u, status=%x", pid,status);
   if (status & 0xff)
     {
       /* signal */

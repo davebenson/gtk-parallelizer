@@ -1,3 +1,4 @@
 sleep 1; echo hello
 echo error 1>&2
 echo bar
+exit 4
