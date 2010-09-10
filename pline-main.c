@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include "parallelizer.h"
 
 #define WINDOW_NAME                     "window1"
@@ -121,8 +122,6 @@ int main(int argc, char **argv)
   GError *error = NULL;
   GOptionContext *op_context;
   unsigned i;
-
-  gtk_init (&argc, &argv);
 
   cmdline_inputs = g_ptr_array_new ();
   op_context = g_option_context_new (NULL);

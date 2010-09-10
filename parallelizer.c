@@ -1,6 +1,8 @@
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <string.h>
 #include "parallelizer.h"
 
 static void do_input_source_trap (System *system);
@@ -177,22 +179,25 @@ struct _SourceFD
   gboolean is_pollable;
   gboolean should_close;
   GByteArray *buffer;
+  char separator_char;
 };
 
-static gboolean
-do_idle_input_source (gpointer data)
+static void
+maybe_do_input_source_fd_read (SourceFD *sfd,
+                               gboolean  at_most_one_read)
 {
-  SourceFD *sfd = data;
-  while (memchr (sfd->buffer->data, '\n', sfd->buffer->len) == NULL
+  while (memchr (sfd->buffer->data, sfd->separator_char, sfd->buffer->len) == NULL
     && sfd->fd.fd >= 0)
     {
       unsigned old_len = sfd->buffer->len;
+      ssize_t read_rv;
       g_byte_array_set_size (sfd->buffer, old_len + 4096);
       read_rv = read (sfd->fd.fd, sfd->buffer->data + old_len,
                       sfd->buffer->len - old_len);
       if (read_rv < 0)
         {
-          ...
+          g_error ("error reading from file-descriptor: %s",
+                   g_strerror (errno));
         }
       else if (read_rv == 0)
         {
@@ -200,17 +205,45 @@ do_idle_input_source (gpointer data)
           if (sfd->buffer->len > 0)
             {
               /* complain about partial line */
-              ...
+              g_warning ("partial line encountered at end of input file");
             }
           if (sfd->should_close)
             close (sfd->fd.fd);
           sfd->fd.fd = -1;
+          return;
+        }
+      else
+        {
+          g_byte_array_set_size (sfd->buffer, old_len + read_rv);
+          if (at_most_one_read)
+            return;
         }
     }
-  while (trapped)
+}
+static void
+run_input_source_fd_callbacks (SourceFD *sfd)
+{
+  while (sfd->base.callback)
     {
-      ....do callbacks...
+      char *nl = memchr (sfd->buffer->data, sfd->separator_char, sfd->buffer->len);
+      if (nl == NULL)
+        break;
+      *nl = 0;
+      sfd->base.callback (&sfd->base,
+                          (char*)sfd->buffer->data,
+                          sfd->base.trap_data);
+
+      g_byte_array_remove_range (sfd->buffer, 0,
+                                 (nl + 1) - (char*)sfd->buffer->data);
     }
+}
+
+static gboolean
+do_idle_input_source (gpointer data)
+{
+  SourceFD *sfd = data;
+  maybe_do_input_source_fd_read (sfd, FALSE);
+  run_input_source_fd_callbacks (sfd);
   return TRUE;
 }
 
@@ -221,7 +254,7 @@ source_fd_trap (Source *source)
   if (sfd->is_pollable)
     g_idle_add (do_idle_input_source, source);
   else
-    g_main_context_add_poll (g_main_context_default (), &task->fd, 0);
+    g_main_context_add_poll (g_main_context_default (), &sfd->fd, 0);
 }
 
 static void 
@@ -231,7 +264,7 @@ source_fd_untrap (Source *source)
   if (sfd->is_pollable)
     g_idle_remove_by_data (source);
   else
-    g_main_context_remove_poll (g_main_context_default (), &task->fd);
+    g_main_context_remove_poll (g_main_context_default (), &sfd->fd);
 }
 
 static void 
@@ -239,8 +272,8 @@ source_fd_destroy (Source *source)
 {
   SourceFD *sfd = (SourceFD *) source;
   if (sfd->should_close)
-    close (sfd->fd);
-  g_slice_free (sfd, SourceFD);
+    close (sfd->fd.fd);
+  g_slice_free (SourceFD, sfd);
 }
 
 static gboolean
@@ -261,15 +294,17 @@ void    system_add_input_fd            (System *system,
 {
   SourceFD *source = g_slice_new (SourceFD);
   source->base.trap = source_fd_trap;
+  source->base.untrap = source_fd_untrap;
   source->base.destroy = source_fd_destroy;
   source->fd.fd = fd;
   source->fd.events = G_IO_IN;
   source->is_pollable = get_fd_is_pollable (fd);
   source->should_close = should_close;
-  source->callback = NULL;
-  source->trap_data = NULL;
+  source->base.callback = NULL;
+  source->base.trap_data = NULL;
   source->buffer = g_byte_array_new ();
-  system_add_input_source (system, source);
+  source->separator_char = '\n';                /* TODO: someday support NUL */
+  system_add_input_source (system, &source->base);
 }
 
 void    system_set_max_unstarted_tasks (System *system,
