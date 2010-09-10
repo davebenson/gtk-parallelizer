@@ -42,7 +42,7 @@ maybe_uptime_last_time_secs (gulong tim)
       last_time_secs = tim;
       tm = *localtime(&t);
       strftime (last_time_str, sizeof (last_time_str),
-                "%Y %d%b%m %H:%M:%S",
+                "%Y-%m-%d %H:%M:%S",
                 &tm);
     }
 }
@@ -65,9 +65,10 @@ syshandler__handle_line (Task *task,
 {
   maybe_uptime_last_time_secs (current_time->tv_sec);
   fprintf (is_stderr ? stderr : stdout,
-           "%s.%03u%c %s\n",
-           last_time_secs,
+           "%s.%03u [%6u]%c %s\n",
+           last_time_str,
            current_time->tv_usec/1000,
+           task->task_index,
            is_stderr ? '!' : ':',
            text);
 }

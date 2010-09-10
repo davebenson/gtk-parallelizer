@@ -5,6 +5,7 @@ typedef struct _System System;
 typedef struct _Source Source;
 
 #include <glib.h>
+#include "g-source-fd.h"
 
 #define PARALLELIZER_ERROR_DOMAIN_QUARK   g_quark_from_static_string("Parallelizer")
 typedef enum
@@ -52,10 +53,21 @@ struct _Task
   union {
     struct {
       pid_t pid;
-      GPollFD stdin_poll;
-      GPollFD stdout_poll;
-      GPollFD stderr_poll;
-      gboolean has_stdin_poll;
+
+      int stdin_fd;
+      GSourceFD *stdin_source;
+      GByteArray *stdin_output_buffer;
+
+      int stdout_fd;
+      GSourceFD *stdout_source;
+      GByteArray *stdout_input_buffer;
+
+      int stderr_fd;
+      GSourceFD *stderr_source;
+      GByteArray *stderr_input_buffer;
+
+      TaskTerminationType termination_type;
+      int termination_info;
     } running;
     struct {
       TaskTerminationType termination_type;
