@@ -108,6 +108,7 @@ handle_stdouterr_readable (Task       *task,
         {
           /* invoke traps */
           SystemTrap *trap;
+          g_byte_array_set_size (buffer, old_len + read_rv);
           for (trap = task->system->trap_list; trap; trap = trap->next)
             {
               if (trap->funcs->handle_data)
@@ -117,7 +118,6 @@ handle_stdouterr_readable (Task       *task,
                                           buffer->data + old_len,
                                           trap->trap_data);
             }
-          g_byte_array_set_size (buffer, old_len + read_rv);
         }
     }
 
@@ -315,6 +315,12 @@ retry_fork:
   task->info.running.stdout_source = g_source_fd_new (task->info.running.stdout_fd, G_IO_IN, handle_stdout_readable, task);
   task->info.running.stderr_source = g_source_fd_new (task->info.running.stderr_fd, G_IO_IN, handle_stderr_readable, task);
   g_child_watch_add (pid, handle_child_watch_terminated, task);
+  GTimeVal cur_time;
+  g_get_current_time (&cur_time);
+  SystemTrap *trap;
+  for (trap = task->system->trap_list; trap; trap = trap->next)
+    if (trap->funcs->handle_started)
+      trap->funcs->handle_started (task, &cur_time, task->str, trap->trap_data);
 }
 
 static void

@@ -10,7 +10,8 @@ typedef struct _Source Source;
 #define PARALLELIZER_ERROR_DOMAIN_QUARK   g_quark_from_static_string("Parallelizer")
 typedef enum
 {
-  PARALLELIZER_ERROR_OPEN
+  PARALLELIZER_ERROR_OPEN,
+  PARALLELIZER_ERROR_CMDLINE_ARG
 } ParallelizerErrorCode;
 
 /* On most systems, a process can only terminate in these two ways:
@@ -100,6 +101,10 @@ typedef struct _SystemTrap SystemTrap;
 typedef struct _SystemTrapFuncs SystemTrapFuncs;
 struct _SystemTrapFuncs
 {
+  void (*handle_started) (Task *task,
+                          const GTimeVal *current_time,
+                          const char *cmdline,
+                          gpointer handler_data);
   void (*handle_data) (Task *task,
                        const GTimeVal *current_time,
                        gboolean is_stderr, /* else is stdout */
