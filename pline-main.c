@@ -80,8 +80,9 @@ syshandler__ended       (Task *task,
                          int termination_info,
                          gpointer handler_data)
 {
+  //g_message ("task %u ended [type=%u, info=%u]", task->task_index,termination_type,termination_info);
   maybe_uptime_last_time_secs (current_time->tv_sec);
-  switch (termination_info)
+  switch (termination_type)
     {
     case TASK_TERMINATION_EXIT:
       if (termination_info == 0)
@@ -140,9 +141,9 @@ int main(int argc, char **argv)
 
   System *system;
   system = system_new ();
+  system_trap (system, &trap_funcs, NULL);
   if (cmdline_max_parallel > 0)
     system_set_max_running_tasks (system, cmdline_max_parallel);
-  system_trap (system, &trap_funcs, NULL);
   for (i = 0; i < cmdline_inputs->len; i++)
     {
       const char *filename = cmdline_inputs->pdata[i];

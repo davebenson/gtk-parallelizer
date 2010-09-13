@@ -247,7 +247,6 @@ handle_child_watch_terminated (GPid     pid,
                                gpointer data)
 {
   Task *task = data;
-  g_message ("handle_child_watch_terminated: pid=%u, status=%x", pid,status);
   if (status & 0xff)
     {
       /* signal */
