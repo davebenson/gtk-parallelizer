@@ -140,6 +140,7 @@ int main(int argc, char **argv)
   signal (SIGPIPE, SIG_IGN);
 
   System *system;
+  unsigned n_input_sources = 0;
   system = system_new ();
   system_trap (system, &trap_funcs, NULL);
   if (cmdline_max_parallel > 0)
@@ -148,12 +149,23 @@ int main(int argc, char **argv)
     {
       const char *filename = cmdline_inputs->pdata[i];
       if (strcmp (filename, "-") == 0)
-        system_add_input_stdin (system);
+        {
+          n_input_sources++;
+          system_add_input_stdin (system);
+        }
       else
         {
           if (!system_add_input_script (system, filename, &error))
             g_error ("opening script: %s", error->message);
+          n_input_sources++;
         }
+    }
+  if (n_input_sources == 0)
+    {
+      fprintf (stderr,
+               "%s: no inputs given, nothing to do.  try --help\n",
+               argv[0]);
+      return 0;
     }
   GMainLoop *loop;
   loop = g_main_loop_new (g_main_context_default (), FALSE);
